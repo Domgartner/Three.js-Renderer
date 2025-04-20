@@ -2,155 +2,104 @@ import * as THREE from 'three';
 
 /**
  * Creates an orientation axis gizmo for the scene
- * @param {Object} params - Parameters
- * @param {THREE.Camera} params.mainCamera - Main camera
- * @param {HTMLElement} params.container - Container element
- * @returns {Object} Gizmo objects and update function
+ * @param {Object} params
+ * @param {THREE.Camera} params.mainCamera
+ * @param {HTMLElement} params.container
  */
 export function createAxisGizmo({ mainCamera, container }) {
-  // Create a separate scene for the gizmo
+  // Create a new scene for the gizmo
   const gizmoScene = new THREE.Scene();
-  
-  // Create a separate camera for the gizmo
-  const gizmoCamera = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
+
+  // Set up the camera for the gizmo
+  const size = 1.4;
+  const gizmoCamera = new THREE.OrthographicCamera(-size, size, size, -size, 0.1, 100);
   gizmoCamera.position.set(0, 0, 3);
   gizmoCamera.lookAt(0, 0, 0);
-  
-  // Create a renderer for the gizmo
+
+  // Set up the renderer for the gizmo
   const gizmoRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
   gizmoRenderer.setSize(80, 80);
   gizmoRenderer.setClearColor(0x000000, 0);
-  
-  // Position the gizmo renderer in the bottom right corner
-  gizmoRenderer.domElement.style.position = 'absolute';
-  gizmoRenderer.domElement.style.bottom = '20px';
-  gizmoRenderer.domElement.style.right = '30px';
-  gizmoRenderer.domElement.style.zIndex = '10';
-  gizmoRenderer.domElement.style.pointerEvents = 'none'; // Ignore mouse events
-  
-  // Add the gizmo's canvas to the container
+  Object.assign(gizmoRenderer.domElement.style, {
+    position: 'absolute',
+    bottom: '20px',
+    right: '30px',
+    zIndex: '10',
+    pointerEvents: 'none'
+  });
   container.appendChild(gizmoRenderer.domElement);
-  
-  // Create axes for the gizmo
-  const axisLength = 1;
 
-  // X-axis (red)
-  const xAxisGeometry = new THREE.CylinderGeometry(0.04, 0.04, axisLength, 8);
-  const xAxisMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-  const xAxis = new THREE.Mesh(xAxisGeometry, xAxisMaterial);
-  xAxis.position.set(axisLength / 2, 0, 0);
-  xAxis.rotation.z = -Math.PI / 2;
-  gizmoScene.add(xAxis);
+  const createAxis = (dir, color, rotation, labelOffset) => {
+    const mat = new THREE.MeshBasicMaterial({ color });
+    const axis = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 1, 8), mat);
+    axis.position.copy(dir.clone().multiplyScalar(0.5));
+    axis.rotation.setFromVector3(rotation);
+    gizmoScene.add(axis);
 
-  const xConeGeometry = new THREE.ConeGeometry(0.08, 0.2, 8);
-  const xCone = new THREE.Mesh(xConeGeometry, xAxisMaterial);
-  xCone.position.set(axisLength, 0, 0);
-  xCone.rotation.z = -Math.PI / 2;
-  gizmoScene.add(xCone);
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.2, 8), mat);
+    cone.position.copy(dir.clone());
+    cone.rotation.setFromVector3(rotation);
+    gizmoScene.add(cone);
 
-  // Y-axis (green)
-  const yAxisGeometry = new THREE.CylinderGeometry(0.04, 0.04, axisLength, 8);
-  const yAxisMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
-  const yAxis = new THREE.Mesh(yAxisGeometry, yAxisMaterial);
-  yAxis.position.set(0, axisLength / 2, 0);
-  gizmoScene.add(yAxis);
+    const label = createLabel(dir, color, labelOffset);
+    gizmoScene.add(label);
 
-  const yConeGeometry = new THREE.ConeGeometry(0.08, 0.2, 8);
-  const yCone = new THREE.Mesh(yConeGeometry, yAxisMaterial);
-  yCone.position.set(0, axisLength, 0);
-  gizmoScene.add(yCone);
+    return { geometry: [axis.geometry, cone.geometry], material: mat };
+  };
 
-  // Z-axis (blue)
-  const zAxisGeometry = new THREE.CylinderGeometry(0.04, 0.04, axisLength, 8);
-  const zAxisMaterial = new THREE.MeshBasicMaterial({ color: 0x0000ff });
-  const zAxis = new THREE.Mesh(zAxisGeometry, zAxisMaterial);
-  zAxis.position.set(0, 0, axisLength / 2);
-  zAxis.rotation.x = Math.PI / 2;
-  gizmoScene.add(zAxis);
-
-  const zConeGeometry = new THREE.ConeGeometry(0.08, 0.2, 8);
-  const zCone = new THREE.Mesh(zConeGeometry, zAxisMaterial);
-  zCone.position.set(0, 0, axisLength);
-  zCone.rotation.x = Math.PI / 2;
-  gizmoScene.add(zCone);
-
-  // Axis label helper
-  function createAxisLabel(text, color = '#ffffff') {
+  const createLabel = (dir, color, offset = 0.3) => {
+    const axisLetter = ['X', 'Y', 'Z'][['x', 'y', 'z'].indexOf(Object.keys(dir).find(k => dir[k] !== 0))];
     const canvas = document.createElement('canvas');
-    canvas.width = 64;
-    canvas.height = 64;
-    const context = canvas.getContext('2d');
-    context.font = 'bold 36px Arial';
-    context.fillStyle = color;
-    context.textAlign = 'center';
-    context.textBaseline = 'middle';
-    context.fillText(text, canvas.width / 2, canvas.height / 2);
+    canvas.width = canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    ctx.font = 'bold 60px Arial';
+    ctx.fillStyle = color;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(axisLetter, 32, 32);
 
     const texture = new THREE.CanvasTexture(canvas);
-    texture.needsUpdate = true;
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true }));
+    sprite.position.copy(dir.clone().multiplyScalar(1 + offset));
+    sprite.scale.set(0.3, 0.3, 0.3);
+    return sprite;
+  };
 
-    const material = new THREE.SpriteMaterial({ map: texture, transparent: true });
-    return new THREE.Sprite(material);
-  }
+  const x = new THREE.Vector3(1, 0, 0);
+  const y = new THREE.Vector3(0, 1, 0);
+  const z = new THREE.Vector3(0, 0, 1);
 
-  // Axis Labels
-  const xLabel = createAxisLabel('X', '#ff0000');
-  xLabel.position.set(axisLength + 0.3, 0, 0);
-  xLabel.scale.set(0.3, 0.3, 0.3);
-  gizmoScene.add(xLabel);
+  const created = [
+    createAxis(x, '#ff0000', new THREE.Vector3(0, 0, -Math.PI / 2), 0.3), // X axis (red)
+    createAxis(y, '#00ff00', new THREE.Vector3(0, 0, 0), 0.3),            // Y axis (green)
+    createAxis(z, '#0000ff', new THREE.Vector3(Math.PI / 2, 0, 0), 0.3)   // Z axis (blue)
+  ];
 
-  const yLabel = createAxisLabel('Y', '#00ff00');
-  yLabel.position.set(0, axisLength + 0.3, 0);
-  yLabel.scale.set(0.3, 0.3, 0.3);
-  gizmoScene.add(yLabel);
-
-  const zLabel = createAxisLabel('Z', '#0000ff');
-  zLabel.position.set(0, 0, axisLength + 0.3);
-  zLabel.scale.set(0.3, 0.3, 0.3);
-  gizmoScene.add(zLabel);
-
-  // Group all gizmo elements
-  const gizmoGroup = new THREE.Group();
-  gizmoScene.children.forEach(child => {
-    gizmoGroup.add(child.clone());
-  });
+  const gizmoGroup = new THREE.Group();     // Group to hold all gizmo elements
+  gizmoScene.children.forEach(child => gizmoGroup.add(child.clone()));
   gizmoScene.clear();
   gizmoScene.add(gizmoGroup);
 
-  // Function to update gizmo orientation based on main camera
   const updateGizmo = () => {
-    const rotation = new THREE.Euler().copy(mainCamera.rotation);
-    gizmoGroup.rotation.copy(rotation);
+    gizmoGroup.rotation.copy(mainCamera.rotation);
     gizmoRenderer.render(gizmoScene, gizmoCamera);
   };
 
-  // Return objects and cleanup function
   return {
     update: updateGizmo,
     cleanup: () => {
-      try {
-        if (container && gizmoRenderer.domElement && container.contains(gizmoRenderer.domElement)) {
-          container.removeChild(gizmoRenderer.domElement);
-        }
-      } catch (e) {
-        console.warn("Failed to remove gizmo canvas:", e);
-      }
-
+      container?.contains(gizmoRenderer.domElement) && container.removeChild(gizmoRenderer.domElement);
       gizmoRenderer.dispose();
-
-      [
-        xAxisGeometry, xConeGeometry, yAxisGeometry,
-        yConeGeometry, zAxisGeometry, zConeGeometry
-      ].forEach(geo => geo?.dispose?.());
-
-      [xAxisMaterial, yAxisMaterial, zAxisMaterial].forEach(mat => mat?.dispose?.());
-
-      gizmoScene.children
-        .filter(child => child.type === 'Sprite')
-        .forEach(sprite => {
-          sprite.material?.map?.dispose?.();
-          sprite.material?.dispose?.();
-        });
+      created.forEach(({ geometry, material }) => {
+        geometry.forEach(g => g.dispose());
+        material.dispose();
+      });
+      gizmoScene.children.forEach(child => {
+        if (child.type === 'Sprite') {
+          child.material?.map?.dispose?.();
+          child.material?.dispose?.();
+        }
+      });
     }
   };
 }
