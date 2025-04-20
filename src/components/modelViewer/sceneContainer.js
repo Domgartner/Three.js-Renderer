@@ -1,7 +1,8 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { initScene } from '../../utils/sceneSetup';
 import { loadModel } from '../../utils/modelLoader';
 import { createHotspots } from '../../utils/hotspotManager';
+import { createAxisGizmo } from '../UI/axisGizmo';
 
 /**
  * Component that handles the Three.js scene initialization and lifecycle
@@ -10,6 +11,114 @@ export default function SceneContainer({ modelConfig, viewerState, onLoad, onErr
 {
   const containerRef = useRef(null);
   const sceneRef = useRef(null);
+  const gizmoRef = useRef(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  const toggleFullscreen = () => {
+    if (!containerRef.current || !sceneRef.current) return;
+    
+    const { renderer, camera } = sceneRef.current;
+    
+    if (!document.fullscreenElement) {
+      // Enter fullscreen
+      let requestSuccess = false;
+      if (containerRef.current.requestFullscreen) {
+        containerRef.current.requestFullscreen();
+        requestSuccess = true;
+      } else if (containerRef.current.webkitRequestFullscreen) {
+        containerRef.current.webkitRequestFullscreen();
+        requestSuccess = true;
+      } else if (containerRef.current.mozRequestFullScreen) {
+        containerRef.current.mozRequestFullScreen();
+        requestSuccess = true;
+      } else if (containerRef.current.msRequestFullscreen) {
+        containerRef.current.msRequestFullscreen();
+        requestSuccess = true;
+      }
+      if(requestSuccess){
+        setIsFullscreen(true);
+        // Resize renderer to window size after a slight delay to ensure fullscreen is complete
+        setTimeout(() => {
+            if (renderer && camera) {
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+            }
+        }, 100);
+    }
+    } else {
+      // Exit fullscreen
+      let exitSuccess = false;
+      if (document.exitFullscreen) {
+        document.exitFullscreen().then(() => {
+          setIsFullscreen(false);
+          // Return to container size after exiting fullscreen
+          setTimeout(() => {
+            if (renderer && camera && containerRef.current) {
+              const width = containerRef.current.clientWidth;
+              const height = containerRef.current.clientHeight;
+              renderer.setSize(width, height);
+              camera.aspect = width / height;
+              camera.updateProjectionMatrix();
+            }
+          }, 100);
+        }).catch();
+      } else if (document.webkitExitFullscreen) {
+        document.webkitExitFullscreen();
+        exitSuccess = true;
+      } else if (document.mozCancelFullScreen) {
+        document.mozCancelFullScreen();
+        exitSuccess = true;
+      } else if (document.msExitFullscreen) {
+        document.msExitFullscreen();
+        exitSuccess = true;
+      }
+      if(exitSuccess) {
+        setIsFullscreen(false);
+        setTimeout(() => updateRendererSize(), 100);
+      }
+    }
+  };
+
+  const updateRendererSize = () => {
+    if (!containerRef.current || !sceneRef.current) return;
+    
+    const { renderer, camera } = sceneRef.current;
+    if (renderer && camera) {
+      const width = isFullscreen ? window.innerWidth : containerRef.current.clientWidth;
+      const height = isFullscreen ? window.innerHeight : containerRef.current.clientHeight;
+      
+      renderer.setSize(width, height);
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+    }
+  };
+
+  // Add event listener for fullscreen change
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const fullscreenActive = !!document.fullscreenElement || 
+                !!document.webkitFullscreenElement || 
+                !!document.mozFullScreenElement || 
+                !!document.msFullscreenElement;
+                                
+      setIsFullscreen(fullscreenActive);
+      // Update renderer size on fullscreen change
+      setTimeout(() => updateRendererSize(), 100);
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+    document.addEventListener('MSFullscreenChange', handleFullscreenChange);
+
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
+    };
+  }, [isFullscreen]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -23,6 +132,9 @@ export default function SceneContainer({ modelConfig, viewerState, onLoad, onErr
       if (sceneRef.current?.cleanup) {
         sceneRef.current.cleanup();
       }
+      if (gizmoRef.current?.cleanup) {
+        gizmoRef.current.cleanup();
+      }
     };
 
     cleanupExistingScene();
@@ -32,6 +144,9 @@ export default function SceneContainer({ modelConfig, viewerState, onLoad, onErr
 
     // Store scene reference for updates and cleanup
     sceneRef.current = { scene, camera, renderer, controls, raycaster, mouse, hotspots, cleanup };
+
+    // Create and initialize the axis gizmo
+    gizmoRef.current = createAxisGizmo({ mainCamera: camera, container: containerRef.current });
 
     // Apply viewer state to scene
     controls.autoRotate = viewerState.autoRotate;
@@ -121,19 +236,17 @@ export default function SceneContainer({ modelConfig, viewerState, onLoad, onErr
       
       controls.update();
       renderer.render(scene, camera);
+      
+      // Update the axis gizmo orientation to match the camera
+      if (gizmoRef.current && gizmoRef.current.update) {
+        gizmoRef.current.update();
+      }
     };
     
     animate();
 
     const handleResize = () => {
-      if (!containerRef.current) return;
-      
-      const width = containerRef.current.clientWidth;
-      const height = containerRef.current.clientHeight;
-      
-      camera.aspect = width / height;
-      camera.updateProjectionMatrix();
-      renderer.setSize(width, height);
+      updateRendererSize();
     };
 
     window.addEventListener('resize', handleResize);
@@ -143,6 +256,9 @@ export default function SceneContainer({ modelConfig, viewerState, onLoad, onErr
       window.removeEventListener('resize', handleResize);
       renderer.domElement.removeEventListener('click', handleClick);
       cancelAnimationFrame(animationFrameId);
+      if (gizmoRef.current && gizmoRef.current.cleanup) {
+        gizmoRef.current.cleanup();
+      }
       cleanup();
     };
   }, [modelConfig.objUrl, modelConfig.mtlUrl]);
@@ -198,8 +314,25 @@ export default function SceneContainer({ modelConfig, viewerState, onLoad, onErr
   return (
     <div
       ref={containerRef}
-      className="w-full h-full bg-gradient-to-b from-gray-50 to-gray-100"
-      style={{ touchAction: 'none' }}
-    />
+      className="w-full h-full bg-gradient-to-b from-gray-50 to-gray-100 relative"
+      style={{ touchAction: 'none', ...(isFullscreen ? { width: '100vw', height: '100vh' } : {}) }}
+    >
+      <button
+        onClick={toggleFullscreen}
+        className="absolute top-4 right-4 z-10 bg-white bg-opacity-70 hover:bg-opacity-100 p-2 rounded-full shadow-md transition-all duration-200"
+        style={{ width: '36px', height: '36px' }}
+        title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
+      >
+        {isFullscreen ? (
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3" />
+          </svg>
+        ) : (
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
+          </svg>
+        )}
+      </button>
+    </div>
   );
 }
