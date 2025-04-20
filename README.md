@@ -2,6 +2,8 @@
 
 A React-based 3D model viewer built with Three.js, allowing users to load, render, and interact with 3D models in a web environment. This project supports features like hotspots, auto-rotation, and wireframe rendering, making it ideal for showcasing 3D designs or assemblies.
 
+![Three.js Model Demo](docs/demo.png)
+
 ## Features
 
 - **3D Model Rendering**: Load and render `.obj` and `.mtl` files using Three.js.

@@ -8,9 +8,9 @@ export const MODEL_CONFIG = {
           position: { x: 0, y: -0.85, z: 0 },
           color: 0xff5555,
           data: {
-            title: 'Nose Section',
+            title: 'Nose',
             description:
-              'The front-most structural section of the assembly. Typically designed for aerodynamic performance and often contains avionics or sensor modules.'
+              'The front-most structural section of the assembly. Designed for aerodynamic performance and contains avionics and sensor modules.'
           }
         },
         {
