@@ -24,8 +24,7 @@ A React-based 3D model viewer built with Three.js, allowing users to load, rende
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/your-username/your-repo-name.git
-   cd your-repo-name
+   git clone https://github.com/Domgartner/Three.js-Renderer.git
    ```
 2. Install dependencies
     ```bash
