@@ -1,4 +1,4 @@
-import { ToggleLeft, ToggleRight, Eye, RotateCw, Grid } from 'lucide-react';
+import { Eye, RotateCw, Grid } from 'lucide-react';
 
 export default function ViewerControls({ viewerState, onToggleOption }) {
   const controls = [
